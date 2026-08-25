@@ -180,8 +180,8 @@ proto-design/
         image-generation.ts
         mock-text-adapter.ts
         mock-image-adapter.ts
-        openai-text-adapter.ts
-        openai-image-adapter.ts
+        gemini-text-adapter.ts
+        gemini-image-adapter.ts
       safety.ts
     logging.ts
     errors.ts
@@ -353,7 +353,7 @@ interface ImageGenerationAdapter {
 }
 ```
 
-`AI_PROVIDER=mock|openai`. 테스트·E2E는 mock.
+`AI_PROVIDER=mock|gemini`. 테스트·E2E는 mock.
 
 ---
 
@@ -523,10 +523,10 @@ Body: `{ projectId, step, idempotencyKey, inputSnapshot }`.
 
 ```
 AI_PROVIDER=mock
-OPENAI_API_KEY=
-OPENAI_BASE_URL=
-OPENAI_TEXT_MODEL=gpt-4o-mini
-OPENAI_IMAGE_MODEL=gpt-image-1
+GEMINI_API_KEY=
+GEMINI_BASE_URL=
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
 ```
 
 Supabase·INTERNAL_JOB_SECRET·CREDIT_* 적용 env는 상용화.
