@@ -66,6 +66,7 @@ export function makeCommittedProject(overrides: Partial<Project> = {}): Project 
     ],
     prototype: null,
     canvasInstances: [],
+    canvasSlots: {},
     createdAt: timestamp,
     updatedAt: timestamp,
     ...overrides,

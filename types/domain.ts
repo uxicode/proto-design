@@ -215,6 +215,7 @@ export interface CanvasSeparatorProps {
 export interface CanvasRadioGroupProps {
   items: string[]
   value: string
+  orientation: "horizontal" | "vertical"
 }
 
 export interface CanvasTabsProps {
@@ -268,6 +269,14 @@ export interface CanvasInstance {
   height: number
   props: CanvasInstanceProps
   zIndex: number
+  parentSlotId?: string | null
+}
+
+export interface CanvasSlotOverride {
+  x: number
+  y: number
+  width: number | null
+  height: number | null
 }
 
 export interface Project {
@@ -284,6 +293,7 @@ export interface Project {
   componentSets: ComponentSet[]
   prototype: PrototypeAsset | null
   canvasInstances: CanvasInstance[]
+  canvasSlots: Record<string, CanvasSlotOverride>
   createdAt: string
   updatedAt: string
 }

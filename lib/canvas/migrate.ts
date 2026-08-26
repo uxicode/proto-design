@@ -1,5 +1,6 @@
 import { clampBox, sanitizeProps } from "@/lib/canvas/defaults"
 import { isCanvasComponentType } from "@/lib/canvas/shadcn-catalog"
+import { sanitizeCanvasSlots } from "@/lib/canvas/slots"
 import type { CanvasInstance } from "@/types/domain"
 
 function asFiniteNumber(value: unknown): number | null {
@@ -40,6 +41,9 @@ export function sanitizeCanvasInstance(raw: unknown): CanvasInstance | null {
     height: box.height,
     props,
     zIndex,
+    parentSlotId: typeof record.parentSlotId === "string" && record.parentSlotId.trim()
+      ? record.parentSlotId
+      : null,
   }
 }
 
@@ -58,10 +62,11 @@ export function migratePersistedState(persisted: unknown): {
     const projectsIn = Array.isArray(raw.projects) ? raw.projects : []
     const projects = projectsIn.map((item) => {
       if (!item || typeof item !== "object") return item
-      const record = item as { canvasInstances?: unknown }
+      const record = item as { canvasInstances?: unknown; canvasSlots?: unknown }
       return {
         ...record,
         canvasInstances: sanitizeCanvasInstances(record.canvasInstances),
+        canvasSlots: sanitizeCanvasSlots(record.canvasSlots),
       }
     })
     return {
@@ -76,7 +81,7 @@ export function migratePersistedState(persisted: unknown): {
     const projectsIn = Array.isArray(raw.projects) ? raw.projects : []
     const projects = projectsIn.map((item) => {
       if (!item || typeof item !== "object") return item
-      return { ...(item as object), canvasInstances: [] }
+      return { ...(item as object), canvasInstances: [], canvasSlots: {} }
     })
     return {
       projects,

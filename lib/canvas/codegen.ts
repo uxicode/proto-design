@@ -113,6 +113,10 @@ export function generateInstanceJsx(instance: CanvasInstance): string {
     }
     case "radio-group": {
       const item = props as CanvasRadioGroupProps
+      const layoutClass =
+        item.orientation === "horizontal"
+          ? "flex flex-row flex-wrap items-center gap-4"
+          : "grid gap-2"
       const items = item.items
         .map(
           (option) =>
@@ -123,7 +127,7 @@ export function generateInstanceJsx(instance: CanvasInstance): string {
         `import { RadioGroup, RadioGroupItem } from "${importPath}"`,
         `import { Label } from "@/components/ui/label"`,
         "",
-        `<RadioGroup${attr("value", item.value)}>`,
+        `<RadioGroup${attr("value", item.value)}${attr("orientation", item.orientation)} className=${JSON.stringify(layoutClass)}>`,
         items,
         `</RadioGroup>`,
       ].join("\n")
@@ -201,3 +205,51 @@ export function generateInstanceJsx(instance: CanvasInstance): string {
     }
   }
 }
+
+function indentBlock(value: string, spaces: number): string {
+  const pad = " ".repeat(spaces)
+  return value
+    .split("\n")
+    .map((line) => (line.length ? pad + line : line))
+    .join("\n")
+}
+
+export function generateInstanceMarkup(instance: CanvasInstance): string {
+  const full = generateInstanceJsx(instance)
+  const splitAt = full.indexOf("\n\n")
+  return splitAt === -1 ? full : full.slice(splitAt + 2)
+}
+
+export function generateInstanceImports(instance: CanvasInstance): string[] {
+  const full = generateInstanceJsx(instance)
+  const splitAt = full.indexOf("\n\n")
+  const head = splitAt === -1 ? "" : full.slice(0, splitAt)
+  return head.split("\n").filter(Boolean)
+}
+
+export function generateSlotJsx(
+  slotId: string,
+  label: string,
+  children: CanvasInstance[]
+): string {
+  const imports = [...new Set(children.flatMap((child) => generateInstanceImports(child)))]
+  const body = children
+    .map((child) => indentBlock(generateInstanceMarkup(child), 2))
+    .join("\n")
+  return [
+    ...imports,
+    ...(imports.length ? [""] : []),
+    `<section data-slot=${JSON.stringify(slotId)} aria-label=${JSON.stringify(label)}>`,
+    body || "  {/* 이 영역에 컴포넌트를 드롭하세요 */}",
+    `</section>`,
+  ].join("\n")
+}
+
+export function generateNestedInstanceJsx(
+  instance: CanvasInstance,
+  slotId: string,
+  label: string
+): string {
+  return generateSlotJsx(slotId, label, [instance])
+}
+

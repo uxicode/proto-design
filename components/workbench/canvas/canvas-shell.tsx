@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, type ReactNode } from "react"
+import { CanvasHistoryButtons } from "@/components/workbench/canvas/canvas-history-buttons"
 import { CanvasInspector } from "@/components/workbench/canvas/canvas-inspector"
 import { CanvasLockHint } from "@/components/workbench/canvas/canvas-lock-hint"
 import { CanvasStage, stageCenterOrigin } from "@/components/workbench/canvas/canvas-stage"
@@ -20,6 +21,7 @@ interface CanvasShellProps {
 export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
   const [stageElement, setStageElement] = useState<HTMLDivElement | null>(null)
   const selectedInstanceId = useProjectStore((state) => state.selectedInstanceId)
+  const selectedSlotId = useProjectStore((state) => state.selectedSlotId)
   const addInstance = useProjectStore((state) => state.addInstance)
   const moveInstance = useProjectStore((state) => state.moveInstance)
   const resizeInstance = useProjectStore((state) => state.resizeInstance)
@@ -27,6 +29,16 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
   const deleteInstance = useProjectStore((state) => state.deleteInstance)
   const clearCanvas = useProjectStore((state) => state.clearCanvas)
   const selectInstance = useProjectStore((state) => state.selectInstance)
+  const updateSlot = useProjectStore((state) => state.updateSlot)
+  const resetSlot = useProjectStore((state) => state.resetSlot)
+  const undoCanvas = useProjectStore((state) => state.undoCanvas)
+  const redoCanvas = useProjectStore((state) => state.redoCanvas)
+  const canUndo = useProjectStore(
+    (state) => (state.canvasHistories?.[project.id]?.past.length ?? 0) > 0
+  )
+  const canRedo = useProjectStore(
+    (state) => (state.canvasHistories?.[project.id]?.future.length ?? 0) > 0
+  )
 
   const instances = project.canvasInstances ?? []
   const isEditable = isCanvasEditable(project)
@@ -52,7 +64,21 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (!isEditable || !selectedInstanceId) return
+      if (!isEditable) return
+      const isMeta = event.metaKey || event.ctrlKey
+      const key = event.key.toLowerCase()
+      if (isMeta && key === "z") {
+        event.preventDefault()
+        if (event.shiftKey) redoCanvas(project.id)
+        else undoCanvas(project.id)
+        return
+      }
+      if (isMeta && key === "y") {
+        event.preventDefault()
+        redoCanvas(project.id)
+        return
+      }
+      if (!selectedInstanceId) return
       const target = event.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
       if (event.key !== "Backspace" && event.key !== "Delete") return
@@ -61,7 +87,7 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [deleteInstance, isEditable, project.id, selectedInstanceId])
+  }, [deleteInstance, isEditable, project.id, redoCanvas, selectedInstanceId, undoCanvas])
 
   function stageSize(): { width: number; height: number } | null {
     if (!stageElement) return null
@@ -80,22 +106,33 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
     })
   }
 
-  function handleDrop(type: CanvasComponentType, x: number, y: number): void {
-    const size = stageSize()
-    if (!size) return
+  function handleDrop(
+    type: CanvasComponentType,
+    x: number,
+    y: number,
+    parentSlotId: string | null,
+    frameWidth: number,
+    frameHeight: number
+  ): void {
     addInstance(project.id, {
       type,
       x,
       y,
-      canvasWidth: size.width,
-      canvasHeight: size.height,
+      canvasWidth: frameWidth,
+      canvasHeight: frameHeight,
+      parentSlotId,
     })
   }
 
-  function handleMoveEnd(id: string, x: number, y: number): void {
-    const size = stageSize()
-    if (!size) return
-    moveInstance(project.id, id, x, y, size.width, size.height)
+  function handleMoveEnd(
+    id: string,
+    x: number,
+    y: number,
+    frameWidth: number,
+    frameHeight: number,
+    parentSlotId?: string | null
+  ): void {
+    moveInstance(project.id, id, x, y, frameWidth, frameHeight, parentSlotId)
   }
 
   function handleResizeEnd(
@@ -103,11 +140,11 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
     x: number,
     y: number,
     width: number,
-    height: number
+    height: number,
+    frameWidth: number,
+    frameHeight: number
   ): void {
-    const size = stageSize()
-    if (!size) return
-    resizeInstance(project.id, id, x, y, width, height, size.width, size.height)
+    resizeInstance(project.id, id, x, y, width, height, frameWidth, frameHeight)
   }
 
   return (
@@ -126,10 +163,19 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
         ) : null}
         <div className="mx-auto flex w-full max-w-6xl shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-3">
           <CanvasLockHint message={lockMessage} />
-          <ClearCanvasButton
-            disabled={!isEditable || instances.length === 0}
-            onConfirm={() => clearCanvas(project.id)}
-          />
+          <div className="flex items-center gap-2">
+            <CanvasHistoryButtons
+              canUndo={canUndo}
+              canRedo={canRedo}
+              disabled={!isEditable}
+              onUndo={() => undoCanvas(project.id)}
+              onRedo={() => redoCanvas(project.id)}
+            />
+            <ClearCanvasButton
+              disabled={!isEditable || instances.length === 0}
+              onConfirm={() => clearCanvas(project.id)}
+            />
+          </div>
         </div>
         <div className="min-h-0 flex-1 px-4 pb-4">
           {stage ?? (
@@ -168,6 +214,15 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
       >
         <CanvasInspector
           instance={selected}
+          slotId={selectedSlotId}
+          nestedInstances={
+            selectedSlotId
+              ? instances.filter((item) => item.parentSlotId === selectedSlotId)
+              : selected?.parentSlotId
+                ? instances.filter((item) => item.parentSlotId === selected.parentSlotId)
+                : []
+          }
+          slotBox={selectedSlotId ? project.canvasSlots?.[selectedSlotId] ?? null : null}
           isEditable={isEditable}
           onChange={(patch, box) => {
             if (!selected) return
@@ -175,9 +230,26 @@ export function CanvasShell({ project, chrome, stage }: CanvasShellProps) {
           }}
           onMove={(x, y) => {
             if (!selected) return
+            if (selected.parentSlotId) {
+              const frame = document.querySelector(
+                `[data-canvas-slot="${CSS.escape(selected.parentSlotId)}"]`
+              ) as HTMLElement | null
+              if (frame) {
+                moveInstance(project.id, selected.id, x, y, frame.clientWidth, frame.clientHeight)
+                return
+              }
+            }
             const size = stageSize()
             if (!size) return
             moveInstance(project.id, selected.id, x, y, size.width, size.height)
+          }}
+          onSlotChange={(box) => {
+            if (!selectedSlotId) return
+            updateSlot(project.id, selectedSlotId, box)
+          }}
+          onSlotReset={() => {
+            if (!selectedSlotId) return
+            resetSlot(project.id, selectedSlotId)
           }}
           onDelete={() => {
             if (!selected) return

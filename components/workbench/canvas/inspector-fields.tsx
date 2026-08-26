@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  MIN_BOX,
   RADIO_ITEM_MAX,
   RADIO_ITEM_MIN,
   SELECT_OPTION_MAX,
@@ -14,6 +13,7 @@ import {
   TABS_LABEL_MAX,
   TABS_LABEL_MIN,
   addListItem,
+  radioGroupBox,
   removeListItemAt,
   resizeStringList,
   updateListItem,
@@ -240,14 +240,22 @@ function TypeFields({
     function commitItems(items: string[]): void {
       onChange(
         { items, value: items.includes(item.value) ? item.value : items[0] },
-        {
-          width: instance.width,
-          height: Math.max(MIN_BOX["radio-group"].height, items.length * 32),
-        }
+        radioGroupBox(items.length, item.orientation)
       )
     }
     return (
       <>
+        <SelectField
+          label="배치"
+          value={item.orientation}
+          options={["vertical", "horizontal"]}
+          optionLabels={{ vertical: "세로", horizontal: "가로" }}
+          disabled={disabled}
+          onChange={(orientation) => {
+            const next = orientation as CanvasRadioGroupProps["orientation"]
+            onChange({ orientation: next }, radioGroupBox(item.items.length, next))
+          }}
+        />
         <OptionListField
           label="항목"
           values={item.items}
@@ -519,12 +527,14 @@ function SelectField({
   label,
   value,
   options,
+  optionLabels,
   disabled,
   onChange,
 }: {
   label: string
   value: string
   options: string[]
+  optionLabels?: Record<string, string>
   disabled: boolean
   onChange: (value: string) => void
 }) {
@@ -541,7 +551,7 @@ function SelectField({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabels?.[option] ?? option}
           </option>
         ))}
       </select>

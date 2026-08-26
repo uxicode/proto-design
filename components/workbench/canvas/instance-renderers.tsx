@@ -115,8 +115,13 @@ function SeparatorView({ props }: { props: CanvasSeparatorProps }) {
 }
 
 function RadioGroupView({ props }: { props: CanvasRadioGroupProps }) {
+  const isHorizontal = props.orientation === "horizontal"
   return (
-    <RadioGroup value={props.value} className="gap-2">
+    <RadioGroup
+      value={props.value}
+      orientation={props.orientation}
+      className={isHorizontal ? "flex flex-row flex-wrap items-center gap-4" : "grid gap-2"}
+    >
       {props.items.map((item) => (
         <div key={item} className="flex items-center gap-2">
           <RadioGroupItem value={item} id={item} />

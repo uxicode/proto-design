@@ -9,7 +9,7 @@ interface CanvasOverlayProps {
   isEditable: boolean
   stageElement: HTMLElement | null
   onSelect: (id: string | null) => void
-  onMoveEnd: (id: string, x: number, y: number) => void
+  onMoveEnd: (id: string, x: number, y: number, clientX: number, clientY: number) => void
   onResizeEnd: (id: string, x: number, y: number, width: number, height: number) => void
 }
 
@@ -22,11 +22,13 @@ export function CanvasOverlay({
   onMoveEnd,
   onResizeEnd,
 }: CanvasOverlayProps) {
-  const sorted = [...instances].sort((a, b) => a.zIndex - b.zIndex)
+  const sorted = [...instances]
+    .filter((item) => !item.parentSlotId)
+    .sort((a, b) => a.zIndex - b.zIndex)
 
   return (
     <div
-      className="absolute inset-0 h-full w-full"
+      className="pointer-events-none absolute inset-0 h-full w-full"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onSelect(null)
       }}

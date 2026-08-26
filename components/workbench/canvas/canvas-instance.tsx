@@ -20,7 +20,7 @@ interface CanvasInstanceViewProps {
   isEditable: boolean
   stageElement: HTMLElement | null
   onSelect: (id: string) => void
-  onMoveEnd: (id: string, x: number, y: number) => void
+  onMoveEnd: (id: string, x: number, y: number, clientX: number, clientY: number) => void
   onResizeEnd: (id: string, x: number, y: number, width: number, height: number) => void
 }
 
@@ -81,6 +81,7 @@ export function CanvasInstanceView({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>): void {
+    if ((event.target as HTMLElement).closest("[data-resize-handle]")) return
     event.stopPropagation()
     onSelect(instance.id)
     if (!isEditable) return
@@ -167,7 +168,7 @@ export function CanvasInstanceView({
       wrapperRef.current.releasePointerCapture(event.pointerId)
     }
     if (gesture.kind === "move") {
-      onMoveEnd(instance.id, next.x, next.y)
+      onMoveEnd(instance.id, next.x, next.y, event.clientX, event.clientY)
       return
     }
     onResizeEnd(instance.id, next.x, next.y, next.width, next.height)
@@ -181,7 +182,7 @@ export function CanvasInstanceView({
       aria-selected={isSelected}
       data-canvas-instance={instance.id}
       className={cn(
-        "absolute cursor-grab touch-none rounded-sm",
+        "pointer-events-auto absolute cursor-grab touch-none rounded-sm",
         isSelected && "ring-2 ring-primary ring-offset-2",
         !isEditable && "cursor-default"
       )}

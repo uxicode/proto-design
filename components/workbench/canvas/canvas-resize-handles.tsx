@@ -74,7 +74,7 @@ export function CanvasResizeHandles({ onResizeStart }: CanvasResizeHandlesProps)
           key={item.handle}
           data-resize-handle={item.handle}
           className={cn(
-            "absolute z-20 flex h-4 w-4 touch-none items-center justify-center",
+            "absolute z-20 flex h-4 w-4 touch-none items-center justify-center pointer-events-auto",
             item.className
           )}
           style={{ cursor: item.cursor }}

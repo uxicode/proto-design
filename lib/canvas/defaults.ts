@@ -17,6 +17,17 @@ export const TABS_LABEL_MAX = 4
 export const SELECT_OPTION_MIN = 2
 export const SELECT_OPTION_MAX = 5
 
+export function radioGroupBox(
+  count: number,
+  orientation: "horizontal" | "vertical"
+): { width: number; height: number } {
+  const items = Math.max(count, RADIO_ITEM_MIN)
+  if (orientation === "horizontal") {
+    return { width: Math.max(240, items * 96), height: 32 }
+  }
+  return { width: 200, height: items * 32 }
+}
+
 const BUTTON_VARIANTS: ShadcnButtonVariant[] = [
   "default",
   "secondary",
@@ -42,7 +53,7 @@ export const MIN_BOX: Record<CanvasComponentType, { width: number; height: numbe
   badge: { width: 48, height: 16 },
   alert: { width: 160, height: 48 },
   separator: { width: 40, height: 4 },
-  "radio-group": { width: 120, height: 48 },
+  "radio-group": { width: 120, height: 24 },
   tabs: { width: 160, height: 28 },
   checkbox: { width: 80, height: 20 },
   switch: { width: 80, height: 20 },
@@ -81,7 +92,7 @@ export function defaultPropsForType(
     case "separator":
       return { orientation: "horizontal" }
     case "radio-group":
-      return { items: ["옵션 1", "옵션 2"], value: "옵션 1" }
+      return { items: ["옵션 1", "옵션 2"], value: "옵션 1", orientation: "vertical" }
     case "tabs":
       return { labels: ["탭 1", "탭 2"], activeIndex: 0 }
     case "checkbox":
@@ -124,7 +135,11 @@ export function defaultBoxForType(
     }
     case "radio-group": {
       const count = "items" in props ? props.items.length : 2
-      return { width: 200, height: count * 32 }
+      const orientation =
+        "orientation" in props && props.orientation === "horizontal"
+          ? "horizontal"
+          : "vertical"
+      return radioGroupBox(count, orientation)
     }
     case "tabs":
       return { width: 320, height: 40 }
@@ -287,7 +302,11 @@ export function sanitizeProps(
     case "radio-group": {
       const items = clampStringList(asStringArray(record.items), RADIO_ITEM_MIN, RADIO_ITEM_MAX, "옵션")
       const value = asString(record.value, items[0])
-      return { items, value: items.includes(value) ? value : items[0] }
+      return {
+        items,
+        value: items.includes(value) ? value : items[0],
+        orientation: record.orientation === "horizontal" ? "horizontal" : "vertical",
+      }
     }
     case "tabs": {
       const labels = clampStringList(asStringArray(record.labels), TABS_LABEL_MIN, TABS_LABEL_MAX, "탭")

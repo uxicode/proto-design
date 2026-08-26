@@ -23,6 +23,7 @@ function baseProject(overrides: Partial<Project> = {}): Project {
     componentSets: [],
     prototype: null,
     canvasInstances: [],
+    canvasSlots: {},
     createdAt: timestamp,
     updatedAt: timestamp,
     ...overrides,

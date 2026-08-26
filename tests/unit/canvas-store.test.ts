@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import { useProjectStore } from "@/lib/projects/store"
+import { resetCanvasHistoryCoalesce, useProjectStore } from "@/lib/projects/store"
 import { makeCommittedProject } from "./canvas-fixtures"
 
 describe("canvas store", () => {
   beforeEach(() => {
+    resetCanvasHistoryCoalesce()
     useProjectStore.setState({
       projects: [makeCommittedProject()],
       onboardingCompleted: false,
       selectedInstanceId: null,
+      selectedSlotId: null,
+      canvasHistories: {},
     })
   })
 
@@ -53,6 +56,23 @@ describe("canvas store", () => {
     expect(useProjectStore.getState().projects[0].canvasInstances).toHaveLength(0)
     expect(useProjectStore.getState().selectedInstanceId).toBeNull()
 
+    const nested = useProjectStore.getState().addInstance("p-canvas", {
+      type: "button",
+      x: 12,
+      y: 8,
+      canvasWidth: 400,
+      canvasHeight: 80,
+      parentSlotId: "header",
+    })
+    expect(nested?.parentSlotId).toBe("header")
+    useProjectStore.getState().updateSlot("p-canvas", "header", {
+      x: 4,
+      y: 0,
+      width: 360,
+      height: 56,
+    })
+    expect(useProjectStore.getState().projects[0].canvasSlots.header?.width).toBe(360)
+
     useProjectStore.getState().addInstance("p-canvas", {
       type: "badge",
       x: 0,
@@ -75,6 +95,7 @@ describe("canvas store", () => {
       })
     )
     expect(persisted.selectedInstanceId).toBeUndefined()
+    expect(persisted.canvasHistories).toBeUndefined()
   })
 
   it("commit 이후에도 인스턴스 길이를 유지한다", () => {
@@ -166,5 +187,16 @@ describe("canvas store", () => {
     const shrunk = useProjectStore.getState().projects[0].canvasInstances[0]
       .props as { items: string[] }
     expect(shrunk.items).toEqual(["옵션 1", "옵션 2"])
+
+    useProjectStore.getState().updateInstanceProps(
+      "p-canvas",
+      added!.id,
+      { orientation: "horizontal" },
+      { width: 240, height: 32 }
+    )
+    const sideways = useProjectStore.getState().projects[0].canvasInstances[0]
+    const props = sideways.props as { orientation: string }
+    expect(props.orientation).toBe("horizontal")
+    expect(sideways.height).toBe(32)
   })
 })

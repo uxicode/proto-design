@@ -10,6 +10,7 @@ describe("canvas migrate", () => {
     expect(next.projects[0]).toMatchObject({
       id: "p1",
       canvasInstances: [],
+      canvasSlots: {},
     })
     expect(next.onboardingCompleted).toBe(true)
   })

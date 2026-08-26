@@ -11,7 +11,17 @@ import {
 } from "@/lib/canvas/defaults"
 import { clampToFrame } from "@/lib/canvas/geometry"
 import { isCanvasEditable } from "@/lib/canvas/guards"
+import {
+  applyCanvasSnapshot,
+  captureCanvasSnapshot,
+  CANVAS_HISTORY_COALESCE_MS,
+  pushCanvasHistory,
+  redoCanvasHistory,
+  undoCanvasHistory,
+  type CanvasHistories,
+} from "@/lib/canvas/history"
 import { migratePersistedState, sanitizeCanvasInstances } from "@/lib/canvas/migrate"
+import { sanitizeCanvasSlots } from "@/lib/canvas/slots"
 import { debouncedLocalStorage } from "@/lib/projects/debounced-storage"
 import {
   applyBriefChange,
@@ -27,6 +37,7 @@ import type {
   CanvasComponentType,
   CanvasInstance,
   CanvasInstanceProps,
+  CanvasSlotOverride,
   ComponentSet,
   Concept,
   GenerationStep,
@@ -50,10 +61,13 @@ interface AddInstanceInput {
   y: number
   canvasWidth: number
   canvasHeight: number
+  parentSlotId?: string | null
 }
 
 interface ProjectStore extends PersistedState {
   selectedInstanceId: string | null
+  selectedSlotId: string | null
+  canvasHistories: CanvasHistories
   createProject: (name: string) => Project
   deleteProject: (id: string) => void
   updateBrief: (id: string, brief: BriefInput) => Project
@@ -75,7 +89,15 @@ interface ProjectStore extends PersistedState {
   completeOnboarding: () => void
   getProject: (id: string) => Project | undefined
   addInstance: (projectId: string, input: AddInstanceInput) => CanvasInstance | null
-  moveInstance: (projectId: string, instanceId: string, x: number, y: number, canvasWidth: number, canvasHeight: number) => void
+  moveInstance: (
+    projectId: string,
+    instanceId: string,
+    x: number,
+    y: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    parentSlotId?: string | null
+  ) => void
   resizeInstance: (
     projectId: string,
     instanceId: string,
@@ -95,6 +117,11 @@ interface ProjectStore extends PersistedState {
   deleteInstance: (projectId: string, instanceId: string) => void
   clearCanvas: (projectId: string) => void
   selectInstance: (instanceId: string | null) => void
+  selectSlot: (slotId: string | null) => void
+  updateSlot: (projectId: string, slotId: string, box: CanvasSlotOverride) => void
+  resetSlot: (projectId: string, slotId: string) => void
+  undoCanvas: (projectId: string) => boolean
+  redoCanvas: (projectId: string) => boolean
 }
 
 function nowIso(): string {
@@ -105,6 +132,7 @@ function withCanvasInstances(project: Project): Project {
   return {
     ...project,
     canvasInstances: sanitizeCanvasInstances(project.canvasInstances),
+    canvasSlots: sanitizeCanvasSlots(project.canvasSlots),
   }
 }
 
@@ -124,6 +152,7 @@ function emptyProject(name: string): Project {
     componentSets: [],
     prototype: null,
     canvasInstances: [],
+    canvasSlots: {},
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -145,12 +174,49 @@ function kitForProject(project: Project) {
   })
 }
 
+let lastHistoryCoalesce: { key: string; at: number } | null = null
+
+function recordCanvasHistory(
+  state: {
+    projects: Project[]
+    selectedInstanceId: string | null
+    selectedSlotId: string | null
+    canvasHistories: CanvasHistories
+  },
+  projectId: string,
+  coalesceKey?: string
+): CanvasHistories {
+  const project = state.projects.find((item) => item.id === projectId)
+  if (!project) return state.canvasHistories
+  const now = Date.now()
+  if (
+    coalesceKey &&
+    lastHistoryCoalesce?.key === coalesceKey &&
+    now - lastHistoryCoalesce.at < CANVAS_HISTORY_COALESCE_MS
+  ) {
+    lastHistoryCoalesce = { key: coalesceKey, at: now }
+    return state.canvasHistories
+  }
+  lastHistoryCoalesce = coalesceKey ? { key: coalesceKey, at: now } : null
+  return pushCanvasHistory(
+    state.canvasHistories,
+    projectId,
+    captureCanvasSnapshot(project, state.selectedInstanceId, state.selectedSlotId)
+  )
+}
+
+export function resetCanvasHistoryCoalesce(): void {
+  lastHistoryCoalesce = null
+}
+
 export const useProjectStore = create<ProjectStore>()(
   persist(
     (set, get) => ({
       projects: [],
       onboardingCompleted: false,
       selectedInstanceId: null,
+      selectedSlotId: null,
+      canvasHistories: {},
       getProject: (id) => {
         const project = get().projects.find((item) => item.id === id)
         return project ? withCanvasInstances(project) : undefined
@@ -264,9 +330,12 @@ export const useProjectStore = create<ProjectStore>()(
           height: box.height,
           props,
           zIndex,
+          parentSlotId: input.parentSlotId ?? null,
         }
         set((state) => ({
           selectedInstanceId: instance.id,
+          selectedSlotId: null,
+          canvasHistories: recordCanvasHistory(state, projectId),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             canvasInstances: [...project.canvasInstances, instance],
@@ -275,25 +344,31 @@ export const useProjectStore = create<ProjectStore>()(
         }))
         return instance
       },
-      moveInstance: (projectId, instanceId, x, y, canvasWidth, canvasHeight) => {
+      moveInstance: (projectId, instanceId, x, y, canvasWidth, canvasHeight, parentSlotId) => {
         const current = get().getProject(projectId)
         if (!current || !isCanvasEditable(current)) return
+        const item = current.canvasInstances.find((entry) => entry.id === instanceId)
+        if (!item) return
+        const next = clampToFrame(x, y, item.width, item.height, canvasWidth, canvasHeight)
+        const nextParent =
+          parentSlotId === undefined ? item.parentSlotId ?? null : parentSlotId
+        if (
+          item.x === next.x &&
+          item.y === next.y &&
+          (item.parentSlotId ?? null) === nextParent
+        ) {
+          return
+        }
         set((state) => ({
+          canvasHistories: recordCanvasHistory(state, projectId, `${projectId}:move:${instanceId}`),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             updatedAt: nowIso(),
-            canvasInstances: project.canvasInstances.map((item) => {
-              if (item.id !== instanceId) return item
-              const next = clampToFrame(
-                x,
-                y,
-                item.width,
-                item.height,
-                canvasWidth,
-                canvasHeight
-              )
-              return { ...item, x: next.x, y: next.y }
-            }),
+            canvasInstances: project.canvasInstances.map((entry) =>
+              entry.id === instanceId
+                ? { ...entry, x: next.x, y: next.y, parentSlotId: nextParent }
+                : entry
+            ),
           })),
         }))
       },
@@ -301,6 +376,11 @@ export const useProjectStore = create<ProjectStore>()(
         const current = get().getProject(projectId)
         if (!current || !isCanvasEditable(current)) return
         set((state) => ({
+          canvasHistories: recordCanvasHistory(
+            state,
+            projectId,
+            `${projectId}:resize:${instanceId}`
+          ),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             updatedAt: nowIso(),
@@ -330,6 +410,11 @@ export const useProjectStore = create<ProjectStore>()(
         const current = get().getProject(projectId)
         if (!current || !isCanvasEditable(current)) return
         set((state) => ({
+          canvasHistories: recordCanvasHistory(
+            state,
+            projectId,
+            `${projectId}:props:${instanceId}`
+          ),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             updatedAt: nowIso(),
@@ -347,6 +432,7 @@ export const useProjectStore = create<ProjectStore>()(
         set((state) => ({
           selectedInstanceId:
             state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
+          canvasHistories: recordCanvasHistory(state, projectId),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             updatedAt: nowIso(),
@@ -359,8 +445,11 @@ export const useProjectStore = create<ProjectStore>()(
       clearCanvas: (projectId) => {
         const current = get().getProject(projectId)
         if (!current || !isCanvasEditable(current)) return
+        if (current.canvasInstances.length === 0) return
         set((state) => ({
           selectedInstanceId: null,
+          selectedSlotId: null,
+          canvasHistories: recordCanvasHistory(state, projectId),
           projects: mapProject(state.projects, projectId, (project) => ({
             ...project,
             updatedAt: nowIso(),
@@ -369,7 +458,86 @@ export const useProjectStore = create<ProjectStore>()(
         }))
       },
       selectInstance: (instanceId) => {
-        set({ selectedInstanceId: instanceId })
+        set({ selectedInstanceId: instanceId, selectedSlotId: instanceId ? null : get().selectedSlotId })
+      },
+      selectSlot: (slotId) => {
+        set({ selectedSlotId: slotId, selectedInstanceId: slotId ? null : get().selectedInstanceId })
+      },
+      updateSlot: (projectId, slotId, box) => {
+        const current = get().getProject(projectId)
+        if (!current || !isCanvasEditable(current)) return
+        set((state) => ({
+          canvasHistories: recordCanvasHistory(state, projectId, `${projectId}:slot:${slotId}`),
+          projects: mapProject(state.projects, projectId, (project) => ({
+            ...project,
+            updatedAt: nowIso(),
+            canvasSlots: {
+              ...sanitizeCanvasSlots(project.canvasSlots),
+              [slotId]: box,
+            },
+          })),
+        }))
+      },
+      resetSlot: (projectId, slotId) => {
+        const current = get().getProject(projectId)
+        if (!current || !isCanvasEditable(current)) return
+        if (!sanitizeCanvasSlots(current.canvasSlots)[slotId]) return
+        set((state) => ({
+          canvasHistories: recordCanvasHistory(state, projectId),
+          projects: mapProject(state.projects, projectId, (project) => {
+            const next = { ...sanitizeCanvasSlots(project.canvasSlots) }
+            delete next[slotId]
+            return {
+              ...project,
+              updatedAt: nowIso(),
+              canvasSlots: next,
+            }
+          }),
+        }))
+      },
+      undoCanvas: (projectId) => {
+        const state = get()
+        const project = state.projects.find((item) => item.id === projectId)
+        if (!project || !isCanvasEditable(project)) return false
+        const current = captureCanvasSnapshot(
+          project,
+          state.selectedInstanceId,
+          state.selectedSlotId
+        )
+        const result = undoCanvasHistory(state.canvasHistories, projectId, current)
+        if (!result) return false
+        lastHistoryCoalesce = null
+        set({
+          canvasHistories: result.histories,
+          selectedInstanceId: result.snapshot.selectedInstanceId,
+          selectedSlotId: result.snapshot.selectedSlotId,
+          projects: mapProject(state.projects, projectId, (item) =>
+            applyCanvasSnapshot(item, result.snapshot)
+          ),
+        })
+        return true
+      },
+      redoCanvas: (projectId) => {
+        const state = get()
+        const project = state.projects.find((item) => item.id === projectId)
+        if (!project || !isCanvasEditable(project)) return false
+        const current = captureCanvasSnapshot(
+          project,
+          state.selectedInstanceId,
+          state.selectedSlotId
+        )
+        const result = redoCanvasHistory(state.canvasHistories, projectId, current)
+        if (!result) return false
+        lastHistoryCoalesce = null
+        set({
+          canvasHistories: result.histories,
+          selectedInstanceId: result.snapshot.selectedInstanceId,
+          selectedSlotId: result.snapshot.selectedSlotId,
+          projects: mapProject(state.projects, projectId, (item) =>
+            applyCanvasSnapshot(item, result.snapshot)
+          ),
+        })
+        return true
       },
     }),
     {

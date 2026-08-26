@@ -8,6 +8,7 @@ import {
   TABS_LABEL_MIN,
   addListItem,
   clampStringList,
+  radioGroupBox,
   removeListItemAt,
   resizeStringList,
   sanitizeProps,
@@ -61,6 +62,7 @@ describe("canvas option lists", () => {
     }) as CanvasRadioGroupProps
     expect(radio.items).toHaveLength(3)
     expect(radio.value).toBe("옵션 2")
+    expect(radio.orientation).toBe("vertical")
 
     const tabs = sanitizeProps("tabs", {
       labels: ["탭 1"],
@@ -74,6 +76,18 @@ describe("canvas option lists", () => {
       placeholder: "선택",
     }) as CanvasSelectProps
     expect(select.options).toHaveLength(SELECT_OPTION_MAX)
+  })
+
+  it("라디오 가로 배치를 보존한다", () => {
+    const radio = sanitizeProps("radio-group", {
+      items: ["옵션 1", "옵션 2"],
+      value: "옵션 1",
+      orientation: "horizontal",
+    }) as CanvasRadioGroupProps
+    expect(radio.orientation).toBe("horizontal")
+    expect(radioGroupBox(3, "horizontal").height).toBe(32)
+    expect(radioGroupBox(3, "horizontal").width).toBeGreaterThan(radioGroupBox(2, "vertical").width)
+    expect(radioGroupBox(3, "vertical").height).toBe(96)
   })
 
   it("라벨 수정을 해당 인덱스에만 반영한다", () => {
